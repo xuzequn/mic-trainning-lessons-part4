@@ -8,7 +8,7 @@ type OrderItem struct {
 	OrderNo        string `gorm:"type:varchar(64);index"`
 	PayType        string `gorm:"type:varchar(64)"` // int wx 银联 支付宝
 	Status         string `gorm:"type:varchar(16)"` // 未支付 支付成功 超市关闭
-	TradeNo        string `gorm:"type:varchar(64)"` // 保证双方对账，
+	TradeNo        string `gorm:"type:varchar(64)"` // 保证双方对账， 第三方对账平台的凭证
 	Addr           string `gorm:"type:varchar(64)"` //
 	Receiver       string `gorm:"type:varchar(16)"`
 	ReceiverMobile string `gorm:"type:varchar(11)"`
