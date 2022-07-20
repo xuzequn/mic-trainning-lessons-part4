@@ -12,10 +12,10 @@ import (
 	"mic-trainning-lesson-part4/proto/pb"
 )
 
-type ShopCartServer struct {
+type CartOrderServer struct {
 }
 
-func (s ShopCartServer) ShopCartItemList(ctx context.Context, req *pb.AccountReq) (*pb.CartItemListRes, error) {
+func (s CartOrderServer) ShopCartItemList(ctx context.Context, req *pb.AccountReq) (*pb.CartItemListRes, error) {
 	var cartItemList []model.ShopCart
 	var res *pb.CartItemListRes
 	var cartItemListPb []*pb.CartItemRes
@@ -38,7 +38,7 @@ func (s ShopCartServer) ShopCartItemList(ctx context.Context, req *pb.AccountReq
 	return res, nil
 }
 
-func (s ShopCartServer) AddShopCartItem(ctx context.Context, req *pb.ShopCartReq) (*pb.CartItemRes, error) {
+func (s CartOrderServer) AddShopCartItem(ctx context.Context, req *pb.ShopCartReq) (*pb.CartItemRes, error) {
 	/*
 		if 没有productId {
 					添加
@@ -66,7 +66,7 @@ func (s ShopCartServer) AddShopCartItem(ctx context.Context, req *pb.ShopCartReq
 
 }
 
-func (s ShopCartServer) UpdateShopCartItem(ctx context.Context, req *pb.ShopCartReq) (*emptypb.Empty, error) {
+func (s CartOrderServer) UpdateShopCartItem(ctx context.Context, req *pb.ShopCartReq) (*emptypb.Empty, error) {
 	var cart model.ShopCart
 	r := internal.DB.Where(&model.ShopCart{
 		AccountId: req.AccountId,
@@ -89,7 +89,7 @@ func (s ShopCartServer) UpdateShopCartItem(ctx context.Context, req *pb.ShopCart
 	return &emptypb.Empty{}, nil
 }
 
-func (s ShopCartServer) DeleteShopCartItem(ctx context.Context, req *pb.DelShopCartItem) (*emptypb.Empty, error) {
+func (s CartOrderServer) DeleteShopCartItem(ctx context.Context, req *pb.DelShopCartItem) (*emptypb.Empty, error) {
 	var cart model.ShopCart
 	r := internal.DB.Where("product_id=? and account_id=?", req.ProductId, req.AccountId).Delete(&cart)
 	if r.RowsAffected < 1 {

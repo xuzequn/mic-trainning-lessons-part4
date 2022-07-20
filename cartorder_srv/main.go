@@ -45,7 +45,7 @@ func main() {
 	addr := fmt.Sprintf("%s:%d", internal.AppConf.CartOrderSrvConfig.Host, port)
 	// 将定义的对象注册grpc服务
 	server := grpc.NewServer()
-	pb.RegisterShopCartServiceServer(server, &biz.ShopCartServer{})
+	pb.RegisterShopCartServiceServer(server, &biz.CartOrderServer{})
 	// 启动服务监听
 	listen, err := net.Listen("tcp", addr)
 	if err != nil {
