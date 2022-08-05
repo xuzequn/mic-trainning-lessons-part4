@@ -19,7 +19,7 @@ type OrderItem struct {
 
 type OrderProduct struct {
 	BaseMode
-	OrderId     int32  `gorm:"type:int;index"`
+	OrderId     string `gorm:"type:type:varchar(64);index"`
 	ProductId   int32  `gorm:"type:int;index"`
 	ProductName string `gorm:"type:varchar(64);index"`
 	CoverImage  string `gorm:"type:varchar(128)"`

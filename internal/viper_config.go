@@ -18,7 +18,10 @@ var NacosConf NacosConfig
 
 var ShopCartClient pb.ShopCartServiceClient
 
-var OrderClient pb.
+var OrderClient pb.OrderServiceClient
+var ProductClient pb.ProductServiceClient
+var StockClient pb.StockServiceClient
+
 //var ViperConf ViperConfig
 var fileName = "dev-config.yaml"
 

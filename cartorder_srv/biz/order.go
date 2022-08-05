@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"errors"
+	"github.com/satori/go.uuid"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"mic-trainning-lesson-part4/cartorder_srv/model"
 	"mic-trainning-lesson-part4/custom_error"
@@ -31,6 +32,72 @@ func (s CartOrderServer) CreateOrder(ctx context.Context, item *pb.OrderItemReq)
 		productIds = append(productIds, cart.ProductId)
 		productNumMap[cart.ProductId] = cart.Num
 	}
+	productRes, err := internal.ProductClient.BatchGetProduct(context.Background(), &pb.BatchProductIdReq{Ids: productIds})
+	if err != nil {
+		return nil, errors.New(custom_error.ProductNotFound)
+	}
+	var amount float32 // 总价 = 单价*数量
+	var orderProductList []model.OrderProduct
+	var stockItemList []*pb.ProductStockItem
+
+	for _, p := range productRes.ItemList {
+		amount += p.RealPrice * float32(productNumMap[p.Id])
+		var orderProduct = model.OrderProduct{
+			ProductId:   p.Id,
+			ProductName: p.Name,
+			CoverImage:  p.CoverImages,
+			RealPrice:   p.RealPrice,
+			Num:         productNumMap[p.Id],
+		}
+		orderProductList = append(orderProductList, orderProduct)
+		stockItem := &pb.ProductStockItem{
+			ProductID: p.Id,
+			Num:       productNumMap[p.Id],
+		}
+		stockItemList = append(stockItemList, stockItem)
+	}
+	_, err = internal.StockClient.Sell(context.Background(), &pb.SellItem{StockItemList: stockItemList})
+	if err != nil {
+		return nil, errors.New(custom_error.StockNotEnough)
+	}
+
+	tx := internal.DB.Begin()
+	orderItem := model.OrderItem{
+		AccountId:      item.AccountId,
+		OrderNo:        uuid.NewV4().String(),
+		Status:         "unPay",
+		Addr:           item.Addr,
+		Receiver:       item.Receiver,
+		ReceiverMobile: item.Mobile,
+		PostCode:       item.PostCode,
+		OrderAmount:    amount,
+	}
+	result := tx.Save(&orderItem)
+	if result.Error != nil || result.RowsAffected < 1 {
+		tx.Rollback()
+		return nil, errors.New(custom_error.CreateOrderFailed)
+	}
+	for _, orderProduct := range orderProductList {
+		orderProduct.OrderId = orderItem.OrderNo
+	}
+	result = tx.CreateInBatches(orderProductList, 50)
+	if result.Error != nil || result.RowsAffected < 1 {
+		tx.Rollback()
+		return nil, errors.New(custom_error.CreateOrderFailed)
+	}
+	result = tx.Where(&model.ShopCart{Checked: &checked, AccountId: item.AccountId}).Delete(&model.ShopCart{})
+	if result.Error != nil || result.RowsAffected < 1 {
+		tx.Rollback()
+		return nil, errors.New(custom_error.CreateOrderFailed)
+	}
+
+	tx.Commit()
+	res := pb.OrderItemRes{
+		Id:       orderItem.ID,
+		OrderNum: orderItem.OrderNo,
+		Amount:   orderItem.OrderAmount,
+	}
+	return &res, nil
 
 }
 
@@ -66,7 +133,7 @@ func (s CartOrderServer) OrderDetail(ctx context.Context, item *pb.OrderItemReq)
 	res := ConventOrderModel2Pb(orderDetail)
 	detailRes.Order = res
 	var orderProductList []model.OrderProduct
-	internal.DB.Where(&model.OrderProduct{OrderId: orderDetail.ID}).Find(&orderProductList)
+	internal.DB.Where(&model.OrderProduct{OrderId: orderDetail.OrderNo}).Find(&orderProductList)
 	for _, product := range orderProductList {
 		detailRes.ProductList = append(detailRes.ProductList, ConvertOrderProductModel2Pb(product))
 	}
