@@ -3,6 +3,7 @@ package internal
 import (
 	"encoding/json"
 	"fmt"
+	_ "github.com/mbobakov/grpc-consul-resolver"
 	"github.com/nacos-group/nacos-sdk-go/clients"
 	"github.com/nacos-group/nacos-sdk-go/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/vo"
@@ -94,5 +95,28 @@ func init() {
 		panic(err)
 	}
 	ShopCartClient = pb.NewShopCartServiceClient(conn)
+	OrderClient = pb.NewOrderServiceClient(conn)
 
+	productSrvAddr := fmt.Sprintf("consul://%s/%s?wait=14s", addr, AppConf.ProductSrvConfig.SrvName)
+	productConn, err := grpc.Dial(productSrvAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robbin"}`),
+	)
+	if err != nil {
+		zap.S().Fatal(err)
+		panic(err)
+	}
+	ProductClient = pb.NewProductServiceClient(productConn)
+
+	stockSrvAddr := fmt.Sprintf("consul://%s/%s?wait=14s", addr, AppConf.StockSrvConfig.SrvName)
+	stockConn, err := grpc.Dial(stockSrvAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robbin"}`),
+	)
+	if err != nil {
+		zap.S().Fatal(err)
+		panic(err)
+	}
+
+	StockClient = pb.NewStockServiceClient(stockConn)
 }

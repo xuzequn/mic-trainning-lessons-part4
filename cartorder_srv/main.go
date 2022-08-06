@@ -46,6 +46,7 @@ func main() {
 	// 将定义的对象注册grpc服务
 	server := grpc.NewServer()
 	pb.RegisterShopCartServiceServer(server, &biz.CartOrderServer{})
+	pb.RegisterOrderServiceServer(server, &biz.CartOrderServer{})
 	// 启动服务监听
 	listen, err := net.Listen("tcp", addr)
 	if err != nil {

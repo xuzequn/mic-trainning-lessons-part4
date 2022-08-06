@@ -21,3 +21,24 @@ func TestCartOrderServer_CreateOrder(t *testing.T) {
 	}
 	fmt.Println(res)
 }
+
+func TestCartOrderServer_OrderList(t *testing.T) {
+	res, err := internal.OrderClient.OrderList(context.Background(), &pb.OrderPagingReq{
+		PageNo:   2,
+		PageSize: 1,
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(res)
+}
+
+func TestCartOrderServer_OrderDetail(t *testing.T) {
+	res, err := internal.OrderClient.OrderDetail(context.Background(), &pb.OrderItemReq{
+		Id: 7,
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(res)
+}

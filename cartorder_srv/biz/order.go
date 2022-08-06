@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/satori/go.uuid"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"mic-trainning-lesson-part4/cartorder_srv/model"
@@ -75,20 +76,33 @@ func (s CartOrderServer) CreateOrder(ctx context.Context, item *pb.OrderItemReq)
 	result := tx.Save(&orderItem)
 	if result.Error != nil || result.RowsAffected < 1 {
 		tx.Rollback()
-		return nil, errors.New(custom_error.CreateOrderFailed)
+		_, err = internal.StockClient.BackStock(context.Background(), &pb.SellItem{StockItemList: stockItemList})
+		if err != nil {
+			return nil, errors.New(custom_error.StockBackFiled)
+		}
+		return nil, errors.New(custom_error.CreateOrderFailed + "保存orderItem")
 	}
-	for _, orderProduct := range orderProductList {
-		orderProduct.OrderId = orderItem.OrderNo
+	for i := 0; i < len(orderProductList); i++ {
+		orderProductList[i].OrderId = orderItem.OrderNo
 	}
+	fmt.Println(orderProductList)
 	result = tx.CreateInBatches(orderProductList, 50)
 	if result.Error != nil || result.RowsAffected < 1 {
 		tx.Rollback()
-		return nil, errors.New(custom_error.CreateOrderFailed)
+		_, err = internal.StockClient.BackStock(context.Background(), &pb.SellItem{StockItemList: stockItemList})
+		if err != nil {
+			return nil, errors.New(custom_error.StockBackFiled)
+		}
+		return nil, errors.New(custom_error.CreateOrderFailed + "赋值商品订单号")
 	}
 	result = tx.Where(&model.ShopCart{Checked: &checked, AccountId: item.AccountId}).Delete(&model.ShopCart{})
 	if result.Error != nil || result.RowsAffected < 1 {
 		tx.Rollback()
-		return nil, errors.New(custom_error.CreateOrderFailed)
+		_, err = internal.StockClient.BackStock(context.Background(), &pb.SellItem{StockItemList: stockItemList})
+		if err != nil {
+			return nil, errors.New(custom_error.StockBackFiled)
+		}
+		return nil, errors.New(custom_error.CreateOrderFailed + "更新购物车是否选中")
 	}
 
 	tx.Commit()

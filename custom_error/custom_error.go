@@ -8,4 +8,5 @@ const (
 	OrderProductList  = "购物车内无选中商品"
 	StockNotEnough    = "库存不足"
 	CreateOrderFailed = "创建订单失败"
+	StockBackFiled    = "库存归还失败"
 )

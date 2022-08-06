@@ -50,7 +50,7 @@ func TestShopCartServer_AddShopCartItem(t *testing.T) {
 	//}
 	//fmt.Println(res)
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 2; i++ {
 		res, err := client.AddShopCartItem(context.Background(), &pb.ShopCartReq{
 			AccountId: 1,
 			ProductId: 6 + int32(i),
