@@ -7,6 +7,8 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"go.uber.org/zap"
 	"mic-trainning-lesson-part4/cartorder_web/handler"
+	"mic-trainning-lesson-part4/cartorder_web/middleware"
+	"mic-trainning-lesson-part4/cartorder_web/order"
 	"mic-trainning-lesson-part4/internal"
 	"mic-trainning-lesson-part4/internal/register"
 	"mic-trainning-lesson-part4/util"
@@ -39,12 +41,19 @@ func init() {
 func main() {
 
 	r := gin.Default()
-	CartOrderGroup := r.Group("/v1/cart")
+	CartOrderGroup := r.Group("/v1/cart").Use(middleware.Tracing())
 	{
 		CartOrderGroup.GET("/list/:accountId", handler.ShopCartListHandler)
 		CartOrderGroup.POST("/add", handler.AddHandler)
 		CartOrderGroup.POST("/update", handler.UpdateHandler)
 		CartOrderGroup.POST("/delete", handler.DelHandler)
+	}
+	orderGroup := r.Group("/v1/order").Use(middleware.Tracing())
+	{
+		orderGroup.GET("", order.ListHandler)
+		orderGroup.GET("/:id", order.Detail)
+		orderGroup.GET("/add", order.CreateOrder)
+
 	}
 	r.GET("/health", handler.HealthHandler)
 

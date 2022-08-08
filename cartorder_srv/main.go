@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"github.com/opentracing/opentracing-go"
 	uuid "github.com/satori/go.uuid"
+	"github.com/uber/jaeger-client-go"
+	jaegercfg "github.com/uber/jaeger-client-go/config"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -12,6 +15,7 @@ import (
 	"mic-trainning-lesson-part4/internal/register"
 	"mic-trainning-lesson-part4/proto/pb"
 	"mic-trainning-lesson-part4/util"
+	"mic-trainning-lesson-part4/util/otgrpc"
 	"net"
 	"os"
 	"os/signal"
@@ -43,8 +47,28 @@ func main() {
 	//port := util.GenRandomPort()
 	port := internal.AppConf.CartOrderSrvConfig.Port
 	addr := fmt.Sprintf("%s:%d", internal.AppConf.CartOrderSrvConfig.Host, port)
+
+	// 链路追踪
+	cfg := jaegercfg.Configuration{
+		Sampler: &jaegercfg.SamplerConfig{
+			Type:  jaeger.SamplerTypeConst,
+			Param: 1,
+		},
+		Reporter: &jaegercfg.ReporterConfig{
+			LogSpans:           true,
+			LocalAgentHostPort: fmt.Sprintf("%s:%d", internal.AppConf.JaegerConfig.AgentHost, internal.AppConf.JaegerConfig.AgentPort),
+		},
+		ServiceName: "xzqMall",
+	}
+	tracer, closer, err := cfg.NewTracer(jaegercfg.Logger(jaeger.StdLogger))
+	defer closer.Close()
+	if err != nil {
+		panic(err)
+	}
+	opentracing.SetGlobalTracer(tracer)
+
 	// 将定义的对象注册grpc服务
-	server := grpc.NewServer()
+	server := grpc.NewServer(grpc.UnaryInterceptor(otgrpc.OpenTracingServerInterceptor(tracer)))
 	pb.RegisterShopCartServiceServer(server, &biz.CartOrderServer{})
 	pb.RegisterOrderServiceServer(server, &biz.CartOrderServer{})
 	// 启动服务监听

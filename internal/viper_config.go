@@ -7,11 +7,14 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/clients"
 	"github.com/nacos-group/nacos-sdk-go/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/vo"
+	"github.com/opentracing/opentracing-go"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"mic-trainning-lesson-part4/proto/pb"
+	//"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
+	"mic-trainning-lesson-part4/util/otgrpc"
 )
 
 var AppConf AppConfig
@@ -89,6 +92,7 @@ func init() {
 	conn, err := grpc.Dial(dialAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robbin"}`),
+		grpc.WithUnaryInterceptor(otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer())),
 	)
 	if err != nil {
 		zap.S().Fatal(err)
@@ -101,6 +105,8 @@ func init() {
 	productConn, err := grpc.Dial(productSrvAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robbin"}`),
+		// grpc 一元连接器           otgrpc.opentracing 客户端拦截器      opentracing 的全局追踪器
+		grpc.WithUnaryInterceptor(otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer())),
 	)
 	if err != nil {
 		zap.S().Fatal(err)
