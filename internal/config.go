@@ -37,6 +37,7 @@ type AppConfig struct {
 	RedisConfig        RedisConfig        `mapstructure:"redis" json:"redis"`
 	ConsulConfig       ConsulConfig       `mapstructure:"consul" json:"consul"`
 	JaegerConfig       JaegerConfig       `mapstructure:"jaeger" json:"jaeger"`
+	RocketMQConfig     RocketMQConfig     `mapstructure:"rocketmq" json:"rocketmq"`
 	CartOrderSrvConfig CartOrderSrvConfig `mapstructure:"cart_order_srv" json:"cart_order_srv"`
 	CartOrderWebConfig CartOrderWebConfig `mapstructure:"cart_order_web" json:"cart_order_web"`
 	ProductSrvConfig   ProductSrvConfig   `mapstructure:"product_srv" json:"product_srv"`
@@ -48,4 +49,9 @@ type AppConfig struct {
 type JaegerConfig struct {
 	AgentHost string `mapstructure:"agentHost" json:"agentHost"`
 	AgentPort int    `mapstructure:"agentPort" json:"agentPort"`
+}
+
+type RocketMQConfig struct {
+	Host string `mapstructure:"host" json:"host"`
+	Port int    `mapstructure:"port" json:"port"`
 }
