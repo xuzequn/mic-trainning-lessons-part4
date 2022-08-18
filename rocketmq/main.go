@@ -8,7 +8,6 @@ import (
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/apache/rocketmq-client-go/v2/producer"
 	"go.uber.org/zap"
-	"mic-trainning-lesson-part4/internal"
 	"os"
 	"strconv"
 	"time"
@@ -17,9 +16,11 @@ import (
 const groupName = "testGroup"
 
 func GetMqAddr() string {
-	mqAddr := fmt.Sprintf("%s:%d", internal.AppConf.RocketMQConfig.Host,
-		internal.AppConf.RocketMQConfig.Port)
+	//mqAddr := fmt.Sprintf("%s:%d", internal.AppConf.RocketMQConfig.Host,
+	//	internal.AppConf.RocketMQConfig.Port)
+	mqAddr := "127.0.0.1:9876"
 	return mqAddr
+
 }
 
 func ProduceMsg(mqAddr string, topic string) {
@@ -41,6 +42,7 @@ func ProduceMsg(mqAddr string, topic string) {
 			Topic: topic,
 			Body:  []byte("Hello Happy Mall" + strconv.Itoa(i)),
 		}
+		msg.WithDelayTimeLevel(3)
 		r, err := p.SendSync(context.Background(), msg)
 		if err != nil {
 			zap.S().Error("发送消息错误" + err.Error())
@@ -88,6 +90,6 @@ func ComsumeMsg(mqAddr string, topic string) {
 func main() {
 	topic := "HappyMall"
 	mqAddr := GetMqAddr()
-	//ProduceMsg(mqAddr, topic)
+	ProduceMsg(mqAddr, topic)
 	ComsumeMsg(mqAddr, topic)
 }
