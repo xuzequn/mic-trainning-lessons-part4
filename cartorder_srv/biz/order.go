@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/satori/go.uuid"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"mic-trainning-lesson-part4/cartorder_srv/model"
 	"mic-trainning-lesson-part4/custom_error"
@@ -12,7 +14,25 @@ import (
 	"mic-trainning-lesson-part4/proto/pb"
 )
 
-func (s CartOrderServer) CreateOrder(ctx context.Context, item *pb.OrderItemReq) (*pb.OrderItemRes, error) {
+type OrderListener struct {
+	Id          int32
+	Detail      string
+	OrderNo     string
+	OrderAmount float32
+	AccountId   int32
+	Status      codes.Code
+	Addr        string
+	Receiver    string
+	Mobile      string
+	PostCode    string
+}
+
+func (ol *OrderListener) ExecuteLocalTransaction(*primitive.Message) primitive.LocalTransactionState {
+	// 1 半消息
+	// 2、 执行库存扣减
+	// 3、 返回成功
+	// 4、 执行本地消息
+
 	/*
 		1、拿到购物车内的选中商品
 		2、订单总金额， 不要相信前端数据
@@ -25,9 +45,10 @@ func (s CartOrderServer) CreateOrder(ctx context.Context, item *pb.OrderItemReq)
 	//                     产品id   产品数量
 	productNumMap := make(map[int32]int32)
 	checked := true
-	r := internal.DB.Where(&model.ShopCart{AccountId: item.AccountId, Checked: &checked}).Find(&cartList)
+	r := internal.DB.Where(&model.ShopCart{AccountId: ol.AccountId, Checked: &checked}).Find(&cartList)
 	if r.RowsAffected == 0 {
-		return nil, errors.New(custom_error.OrderProductList)
+		//return nil, errors.New(custom_error.OrderProductList)
+		return
 	}
 	for _, cart := range cartList {
 		productIds = append(productIds, cart.ProductId)
@@ -64,13 +85,13 @@ func (s CartOrderServer) CreateOrder(ctx context.Context, item *pb.OrderItemReq)
 
 	tx := internal.DB.Begin()
 	orderItem := model.OrderItem{
-		AccountId:      item.AccountId,
+		AccountId:      ol.AccountId,
 		OrderNo:        uuid.NewV4().String(),
 		Status:         "unPay",
-		Addr:           item.Addr,
-		Receiver:       item.Receiver,
-		ReceiverMobile: item.Mobile,
-		PostCode:       item.PostCode,
+		Addr:           ol.Addr,
+		Receiver:       ol.Receiver,
+		ReceiverMobile: ol.Mobile,
+		PostCode:       ol.PostCode,
 		OrderAmount:    amount,
 	}
 	result := tx.Save(&orderItem)
@@ -106,6 +127,16 @@ func (s CartOrderServer) CreateOrder(ctx context.Context, item *pb.OrderItemReq)
 	}
 
 	tx.Commit()
+
+	return primitive.CommitMessageState
+}
+
+func (ol *OrderListener) CheckLocalTransaction(*primitive.MessageExt) primitive.LocalTransactionState {
+	return primitive.CommitMessageState
+}
+
+func (s CartOrderServer) CreateOrder(ctx context.Context, item *pb.OrderItemReq) (*pb.OrderItemRes, error) {
+
 	res := pb.OrderItemRes{
 		Id:       orderItem.ID,
 		OrderNum: orderItem.OrderNo,

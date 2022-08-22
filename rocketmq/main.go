@@ -24,7 +24,7 @@ func GetMqAddr() string {
 }
 
 func ProduceMsg(mqAddr string, topic string) {
-	p, err := rocketmq.NewProducer(
+	p, err := rocketmq.NewProducer( // 普通消息生产者
 		producer.WithGroupName(groupName),
 		producer.WithNsResolver(primitive.NewPassthroughResolver([]string{mqAddr})),
 		producer.WithRetry(2),
