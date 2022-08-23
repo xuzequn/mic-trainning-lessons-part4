@@ -2,10 +2,14 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
+	"github.com/apache/rocketmq-client-go/v2/producer"
 	"github.com/satori/go.uuid"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"mic-trainning-lesson-part4/cartorder_srv/model"
@@ -27,7 +31,7 @@ type OrderListener struct {
 	PostCode    string
 }
 
-func (ol *OrderListener) ExecuteLocalTransaction(*primitive.Message) primitive.LocalTransactionState {
+func (ol *OrderListener) ExecuteLocalTransaction(message *primitive.Message) primitive.LocalTransactionState {
 	// 1 半消息
 	// 2、 执行库存扣减
 	// 3、 返回成功
@@ -40,15 +44,24 @@ func (ol *OrderListener) ExecuteLocalTransaction(*primitive.Message) primitive.L
 		4、把数据写到数据库里，OrderItem+OrderProduct表
 		5、删除购物车内已买到的商品
 	*/
+	var orderItem model.OrderItem
+	err := json.Unmarshal(message.Body, orderItem)
+	if err != nil {
+		zap.S().Error("ExecuteLocalTransaction,Unmarshal,Error" + err.Error())
+		ol.Detail = "ExecuteLocalTransaction,Unmarshal,Error" + err.Error()
+		return primitive.RollbackMessageState
+	}
 	var productIds []int32
 	var cartList []model.ShopCart
 	//                     产品id   产品数量
 	productNumMap := make(map[int32]int32)
 	checked := true
-	r := internal.DB.Where(&model.ShopCart{AccountId: ol.AccountId, Checked: &checked}).Find(&cartList)
+	r := internal.DB.Model(&model.ShopCart{}).Where(&model.ShopCart{AccountId: ol.AccountId, Checked: &checked}).Find(&cartList)
 	if r.RowsAffected == 0 {
+		ol.Detail = custom_error.OrderProductList
+		ol.OrderAmount = 0
 		//return nil, errors.New(custom_error.OrderProductList)
-		return
+		return primitive.RollbackMessageState
 	}
 	for _, cart := range cartList {
 		productIds = append(productIds, cart.ProductId)
@@ -56,7 +69,9 @@ func (ol *OrderListener) ExecuteLocalTransaction(*primitive.Message) primitive.L
 	}
 	productRes, err := internal.ProductClient.BatchGetProduct(context.Background(), &pb.BatchProductIdReq{Ids: productIds})
 	if err != nil {
-		return nil, errors.New(custom_error.ProductNotFound)
+		ol.Detail = custom_error.ProductNotFound
+		ol.OrderAmount = 0
+		return primitive.RollbackMessageState
 	}
 	var amount float32 // 总价 = 单价*数量
 	var orderProductList []model.OrderProduct
@@ -80,28 +95,36 @@ func (ol *OrderListener) ExecuteLocalTransaction(*primitive.Message) primitive.L
 	}
 	_, err = internal.StockClient.Sell(context.Background(), &pb.SellItem{StockItemList: stockItemList})
 	if err != nil {
-		return nil, errors.New(custom_error.StockNotEnough)
+		ol.Detail = custom_error.StockNotEnough
+		ol.OrderAmount = 0
+		return primitive.RollbackMessageState
 	}
 
 	tx := internal.DB.Begin()
-	orderItem := model.OrderItem{
-		AccountId:      ol.AccountId,
-		OrderNo:        uuid.NewV4().String(),
-		Status:         "unPay",
-		Addr:           ol.Addr,
-		Receiver:       ol.Receiver,
-		ReceiverMobile: ol.Mobile,
-		PostCode:       ol.PostCode,
-		OrderAmount:    amount,
-	}
+	//orderItem := model.OrderItem{
+	//	AccountId:      ol.AccountId,
+	//	OrderNo:        uuid.NewV4().String(),
+	//	Status:         "unPay",
+	//	Addr:           ol.Addr,
+	//	Receiver:       ol.Receiver,
+	//	ReceiverMobile: ol.Mobile,
+	//	PostCode:       ol.PostCode,
+	//	OrderAmount:    amount,
+	//}
+	orderItem.Status = "unPay"
+	ol.OrderAmount = amount
 	result := tx.Save(&orderItem)
 	if result.Error != nil || result.RowsAffected < 1 {
 		tx.Rollback()
-		_, err = internal.StockClient.BackStock(context.Background(), &pb.SellItem{StockItemList: stockItemList})
-		if err != nil {
-			return nil, errors.New(custom_error.StockBackFiled)
-		}
-		return nil, errors.New(custom_error.CreateOrderFailed + "保存orderItem")
+		ol.Detail = custom_error.CreateOrderFailed + "保存orderItem"
+		ol.OrderAmount = 0
+		// 归还库存
+		//_, err = internal.StockClient.BackStock(context.Background(), &pb.SellItem{StockItemList: stockItemList})
+		//if err != nil {
+		//	return nil, errors.New(custom_error.StockBackFiled)
+		//}
+		//return nil, errors.New(custom_error.CreateOrderFailed + "保存orderItem")
+		return primitive.CommitMessageState
 	}
 	for i := 0; i < len(orderProductList); i++ {
 		orderProductList[i].OrderId = orderItem.OrderNo
@@ -110,25 +133,31 @@ func (ol *OrderListener) ExecuteLocalTransaction(*primitive.Message) primitive.L
 	result = tx.CreateInBatches(orderProductList, 50)
 	if result.Error != nil || result.RowsAffected < 1 {
 		tx.Rollback()
-		_, err = internal.StockClient.BackStock(context.Background(), &pb.SellItem{StockItemList: stockItemList})
-		if err != nil {
-			return nil, errors.New(custom_error.StockBackFiled)
-		}
-		return nil, errors.New(custom_error.CreateOrderFailed + "赋值商品订单号")
+		ol.Detail = custom_error.CreateOrderFailed + "赋值商品订单号"
+		ol.OrderAmount = 0
+		//_, err = internal.StockClient.BackStock(context.Background(), &pb.SellItem{StockItemList: stockItemList})
+		//if err != nil {
+		//	return nil, errors.New(custom_error.StockBackFiled)
+		//}
+		//return nil, errors.New(custom_error.CreateOrderFailed + "赋值商品订单号")
+		return primitive.CommitMessageState
 	}
-	result = tx.Where(&model.ShopCart{Checked: &checked, AccountId: item.AccountId}).Delete(&model.ShopCart{})
+	result = tx.Where(&model.ShopCart{Checked: &checked, AccountId: ol.AccountId}).Delete(&model.ShopCart{})
 	if result.Error != nil || result.RowsAffected < 1 {
 		tx.Rollback()
-		_, err = internal.StockClient.BackStock(context.Background(), &pb.SellItem{StockItemList: stockItemList})
-		if err != nil {
-			return nil, errors.New(custom_error.StockBackFiled)
-		}
-		return nil, errors.New(custom_error.CreateOrderFailed + "更新购物车是否选中")
+		ol.Detail = custom_error.CreateOrderFailed + "更新购物车是否选中"
+		ol.OrderAmount = 0
+		//_, err = internal.StockClient.BackStock(context.Background(), &pb.SellItem{StockItemList: stockItemList})
+		//if err != nil {
+		//	return nil, errors.New(custom_error.StockBackFiled)
+		//}
+		//return nil, errors.New(custom_error.CreateOrderFailed + "更新购物车是否选中")
+		return primitive.CommitMessageState
 	}
 
 	tx.Commit()
 
-	return primitive.CommitMessageState
+	return primitive.RollbackMessageState
 }
 
 func (ol *OrderListener) CheckLocalTransaction(*primitive.MessageExt) primitive.LocalTransactionState {
@@ -136,11 +165,50 @@ func (ol *OrderListener) CheckLocalTransaction(*primitive.MessageExt) primitive.
 }
 
 func (s CartOrderServer) CreateOrder(ctx context.Context, item *pb.OrderItemReq) (*pb.OrderItemRes, error) {
+	orderListener := &OrderListener{}
+	mqAddr := "127.0.0.1:9876"
+	p, err := rocketmq.NewTransactionProducer( // 开启事物消息生产者
+		orderListener,
+		producer.WithNameServer([]string{mqAddr}),
+	)
+	if err != nil {
+		zap.S().Error(err) // 生产环境禁用panic
+		return nil, err
+	}
+	err = p.Start()
+	if err != nil {
+		zap.S().Error(err)
+		return nil, err
+	}
+	orderItem := model.OrderItem{
+		AccountId:      item.AccountId,
+		OrderNo:        uuid.NewV4().String(),
+		Addr:           item.Addr,
+		Receiver:       item.Receiver,
+		ReceiverMobile: item.Mobile,
+		PostCode:       item.PostCode,
+	}
+	orderItemByteSlice, err := json.Marshal(orderItem)
+	if err != nil {
+		zap.S().Error(err)
+		return nil, err
+	}
+
+	res, err := p.SendMessageInTransaction(context.Background(),
+		primitive.NewMessage("Happy_BackStockTopic", orderItemByteSlice))
+	fmt.Println(res.Status)
+	if err != nil {
+		zap.S().Error(err)
+		return nil, err
+	}
+	if orderListener.Status != codes.OK {
+		return nil, errors.New(custom_error.CreateOrderFailed)
+	}
 
 	res := pb.OrderItemRes{
-		Id:       orderItem.ID,
-		OrderNum: orderItem.OrderNo,
-		Amount:   orderItem.OrderAmount,
+		Id:       orderListener.Id,
+		OrderNum: orderListener.OrderNo,
+		Amount:   orderListener.OrderAmount,
 	}
 	return &res, nil
 
