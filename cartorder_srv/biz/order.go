@@ -160,8 +160,22 @@ func (ol *OrderListener) ExecuteLocalTransaction(message *primitive.Message) pri
 	return primitive.RollbackMessageState
 }
 
-func (ol *OrderListener) CheckLocalTransaction(*primitive.MessageExt) primitive.LocalTransactionState {
-	return primitive.CommitMessageState
+func (ol *OrderListener) CheckLocalTransaction(message *primitive.MessageExt) primitive.LocalTransactionState {
+	var orderItem model.OrderItem
+	err := json.Unmarshal(message.Body, &orderItem)
+	if err != nil {
+		zap.S().Error("CheckLocalTransaction, ERR:", err.Error())
+		return primitive.UnknowState
+	}
+	var temp model.OrderItem
+	// 如果订单创建成功，不需要提交回滚库存消息，如果不成功需要提交回滚库存消息
+	r := internal.DB.Model(&model.OrderItem{}).Where(model.OrderItem{OrderNo: orderItem.OrderNo}).First(temp)
+	if r.RowsAffected < 1 {
+		// 提交的消息是回滚库存消息
+		return primitive.CommitMessageState
+	}
+	// 回滚消息，取消回滚库存消息
+	return primitive.RollbackMessageState
 }
 
 func (s CartOrderServer) CreateOrder(ctx context.Context, item *pb.OrderItemReq) (*pb.OrderItemRes, error) {
@@ -205,12 +219,12 @@ func (s CartOrderServer) CreateOrder(ctx context.Context, item *pb.OrderItemReq)
 		return nil, errors.New(custom_error.CreateOrderFailed)
 	}
 
-	res := pb.OrderItemRes{
+	result := pb.OrderItemRes{
 		Id:       orderListener.Id,
 		OrderNum: orderListener.OrderNo,
 		Amount:   orderListener.OrderAmount,
 	}
-	return &res, nil
+	return &result, nil
 
 }
 
