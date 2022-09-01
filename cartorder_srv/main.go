@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/consumer"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
+	"github.com/apache/rocketmq-client-go/v2/producer"
 	"github.com/opentracing/opentracing-go"
 	uuid "github.com/satori/go.uuid"
 	"github.com/uber/jaeger-client-go"
@@ -15,6 +17,7 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"mic-trainning-lesson-part4/cartorder_srv/biz"
+	"mic-trainning-lesson-part4/cartorder_srv/model"
 	"mic-trainning-lesson-part4/internal"
 	"mic-trainning-lesson-part4/internal/register"
 	"mic-trainning-lesson-part4/proto/pb"
@@ -96,8 +99,34 @@ func main() {
 		consumer.WithNameServer([]string{mqAddr}),
 		consumer.WithGroupName("HappyOrderTimeOut"),
 	)
+
+	newProducer, err := rocketmq.NewProducer(
+		producer.WithNameServer([]string{mqAddr}),
+	)
+	newProducer.Start()
 	pushConsumer.Subscribe("timeout_order_info", consumer.MessageSelector{},
-		func(ctx context.Context, ext ...*primitive.MessageExt) (consumer.ConsumeResult, error) {
+		func(ctx context.Context, messageExt ...*primitive.MessageExt) (consumer.ConsumeResult, error) {
+			for i := range messageExt {
+				var order model.OrderItem
+				json.Unmarshal(messageExt[i].Body, &order)
+				var temp model.OrderItem
+				r := internal.DB.Model(model.OrderItem{}).Where(model.OrderItem{OrderNo: order.OrderNo}).First(&temp)
+				if r.RowsAffected < 1 {
+					return consumer.ConsumeSuccess, nil
+				}
+				if temp.Status != model.PaySuc {
+					tx := internal.DB.Begin()
+					order.Status = model.OrderClosed
+					tx.Save(&order)
+					newProducer.SendSync(context.Background(), primitive.NewMessage("Happy_BackStockTopic", messageExt[i].Body))
+					if err != nil {
+						tx.Rollback()
+						zap.S().Error("订单超时模拟重新返还库存,error" + err.Error())
+						return consumer.ConsumeRetryLater, nil
+					}
+				}
+			}
+			return consumer.ConsumeSuccess, nil
 
 		})
 	go func() {

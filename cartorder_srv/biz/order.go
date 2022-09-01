@@ -171,7 +171,7 @@ func (ol *OrderListener) ExecuteLocalTransaction(message *primitive.Message) pri
 		tx.Rollback()
 		return primitive.CommitMessageState
 	}
-	msg := primitive.NewMessage("timeout_orderinfo", message.Body)
+	msg := primitive.NewMessage("timeout_order_info", message.Body)
 	msg.WithDelayTimeLevel(6) // 2min， 30分钟是16
 	_, err = p.SendSync(context.Background(), msg)
 	if err != nil {
@@ -317,7 +317,7 @@ func ConventOrderModel2Pb(o model.OrderItem) *pb.OrderItemRes {
 		Addr:      o.Addr,
 		Receiver:  o.Receiver,
 		Mobile:    o.ReceiverMobile,
-		Status:    o.Status,
+		Status:    string(o.Status),
 	}
 	return &res
 }
