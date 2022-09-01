@@ -1,7 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"github.com/apache/rocketmq-client-go/v2"
+	"github.com/apache/rocketmq-client-go/v2/consumer"
+	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/opentracing/opentracing-go"
 	uuid "github.com/satori/go.uuid"
 	"github.com/uber/jaeger-client-go"
@@ -87,6 +91,15 @@ func main() {
 	}
 	fmt.Println(fmt.Sprintf("%s启动在%d", randomId, port))
 
+	mqAddr := "127.0.0.1:9876"
+	pushConsumer, _ := rocketmq.NewPushConsumer(
+		consumer.WithNameServer([]string{mqAddr}),
+		consumer.WithGroupName("HappyOrderTimeOut"),
+	)
+	pushConsumer.Subscribe("timeout_order_info", consumer.MessageSelector{},
+		func(ctx context.Context, ext ...*primitive.MessageExt) (consumer.ConsumeResult, error) {
+
+		})
 	go func() {
 		err = server.Serve(listen)
 		if err != nil {

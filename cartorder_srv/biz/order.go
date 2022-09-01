@@ -154,9 +154,37 @@ func (ol *OrderListener) ExecuteLocalTransaction(message *primitive.Message) pri
 		//return nil, errors.New(custom_error.CreateOrderFailed + "更新购物车是否选中")
 		return primitive.CommitMessageState
 	}
-
+	mqAddr := "127.0.0.1:9876"
+	p, err := rocketmq.NewProducer(producer.WithNameServer([]string{mqAddr}))
+	if err != nil {
+		zap.S().Error("新建延迟消息生产者失败：Err" + err.Error())
+		ol.Status = codes.Internal
+		ol.Detail = "新建延迟消息生产者失败：Err" + err.Error()
+		tx.Rollback()
+		return primitive.CommitMessageState
+	}
+	err = p.Start()
+	if err != nil {
+		zap.S().Error("启动延迟消息生产者失败：Err" + err.Error())
+		ol.Status = codes.Internal
+		ol.Detail = "启动延迟消息生产者失败：Err" + err.Error()
+		tx.Rollback()
+		return primitive.CommitMessageState
+	}
+	msg := primitive.NewMessage("timeout_orderinfo", message.Body)
+	msg.WithDelayTimeLevel(6) // 2min， 30分钟是16
+	_, err = p.SendSync(context.Background(), msg)
+	if err != nil {
+		zap.S().Error("延迟消息发送失败：Err" + err.Error())
+		ol.Status = codes.Internal
+		ol.Detail = "延迟消息发送失败：Err" + err.Error()
+		tx.Rollback()
+		return primitive.CommitMessageState
+	}
 	tx.Commit()
-
+	ol.Id = orderItem.ID
+	ol.OrderAmount = orderItem.OrderAmount
+	ol.Status = codes.OK
 	return primitive.RollbackMessageState
 }
 
