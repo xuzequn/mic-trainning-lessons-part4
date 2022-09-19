@@ -1,0 +1,1 @@
+docker run --name:elasticsearch -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" -e ES_JAVA_OPTS="-Xms:128m -Xmx256m" -v ./elasticsearch/plugins:/usr/share/elasticsearch/plugins -v ./elasticsearch/data:/usr/share/elasticsearch/data -d elasticsearch:7.16.2
